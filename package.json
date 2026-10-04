@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "node scripts/build.mjs",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test:contacts": "node scripts/test-contacts.mjs"
   },
   "dependencies": {
     "react": "19.2.6",

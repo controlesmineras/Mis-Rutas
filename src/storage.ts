@@ -4,7 +4,21 @@ export type Notebook={data:Data;base:Data;dirty:boolean;revision:number;lastSync
 let dbPromise:Promise<IDBDatabase>|null=null;
 function database(){return dbPromise??=new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('mis-rutas-independent',1);r.onupgradeneeded=()=>{r.result.createObjectStore('notebooks');r.result.createObjectStore('history',{autoIncrement:true});};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(Error('No se pudo abrir el almacenamiento del dispositivo.'));});}
 function done(tx:IDBTransaction){return new Promise<void>((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error||Error('No se pudo guardar en el dispositivo.'));tx.onabort=()=>reject(tx.error||Error('No se pudo guardar en el dispositivo.'));});}
-export async function readNotebook():Promise<Notebook>{const db=await database();return new Promise((resolve,reject)=>{const tx=db.transaction('notebooks','readwrite');const store=tx.objectStore('notebooks');const r=store.get('main');let value:Notebook;r.onsuccess=()=>{try{value=r.result?{...r.result,data:repairContactDirectory(dataSchema.parse(r.result.data)),base:repairContactDirectory(dataSchema.parse(r.result.base))}:{data:initial,base:initial,dirty:false,revision:0,lastSync:'',seen:[]};if(!r.result||JSON.stringify(r.result.data)!==JSON.stringify(value.data)||JSON.stringify(r.result.base)!==JSON.stringify(value.base))store.put(value,'main');}catch(error){reject(error);tx.abort();}};tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('No se pudo cargar el almacenamiento.'));});}
+export async function readNotebook():Promise<Notebook>{
+ const db=await database();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(['notebooks','history'],'readwrite'),store=tx.objectStore('notebooks'),r=store.get('main');let value:Notebook;
+  r.onsuccess=()=>{try{
+   if(!r.result){value={data:initial,base:initial,dirty:false,revision:0,lastSync:'',seen:[]};store.put(value,'main');return;}
+   const previous:Notebook=r.result;
+   value={...previous,data:repairContactDirectory(dataSchema.parse(previous.data)),base:repairContactDirectory(dataSchema.parse(previous.base))};
+   const repaired=JSON.stringify(previous.data)!==JSON.stringify(value.data);
+   if(repaired){tx.objectStore('history').add({savedAt:new Date().toISOString(),reason:'contacts-repair',data:previous.data});value.revision=previous.revision+1;value.dirty=true;}
+   if(repaired||JSON.stringify(previous.base)!==JSON.stringify(value.base))store.put(value,'main');
+  }catch(error){reject(error);tx.abort();}};
+  tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('No se pudo cargar el almacenamiento.'));
+ });
+}
 export async function writeNotebook(data:Data,revision:number){const db=await database();const tx=db.transaction(['notebooks','history'],'readwrite');const completion=done(tx);const store=tx.objectStore('notebooks');const r=store.get('main');r.onsuccess=()=>{const previous:Notebook=r.result||{data:initial,base:initial,dirty:false,revision:0,lastSync:''};if(previous.revision!==revision){tx.abort();return;}tx.objectStore('history').add({savedAt:new Date().toISOString(),data:previous.data});store.put({...previous,data:dataSchema.parse(data),dirty:true,revision:revision+1},'main');};await completion;const next=await readNotebook();window.dispatchEvent(new Event('routes-saved'));return next;}
 export async function finishSync(expected:number,data:Data,account:string,seen:string[]){const db=await database();const tx=db.transaction(['notebooks','history'],'readwrite');const completion=done(tx);const store=tx.objectStore('notebooks');const r=store.get('main');let conflict=false;r.onsuccess=()=>{const previous:Notebook=r.result;if(!previous||previous.revision!==expected){conflict=true;tx.abort();return;}tx.objectStore('history').add({savedAt:new Date().toISOString(),data:previous.data});store.put({...previous,data,base:data,dirty:false,revision:expected+1,lastSync:new Date().toISOString(),account,seen},'main');};try{await completion;}catch(e){if(conflict)throw Error('Hay cambios nuevos en el dispositivo. Sincroniza de nuevo para incluirlos.');throw e;}return readNotebook();}
 function fingerprint(value:unknown){let h=2166136261;for(const c of JSON.stringify(value)){h=Math.imul(h^c.charCodeAt(0),16777619);}return(h>>>0).toString(16);}

@@ -18,22 +18,32 @@ export function updateCityContact(data:Data,original:CityContact|undefined,city:
  }
  return entry||updated;
 }
-export function consolidateIncompleteContacts(data:Data):Data{
- const phoneKey=(value:string)=>value.replace(/[^+\d]/g,'');
- for(const incomplete of [...(data.cityContacts||[])]){
- if(incomplete.name.trim()||incomplete.address.trim()||!phoneKey(incomplete.phone))continue;
- const candidates=(data.cityContacts||[]).filter(c=>c.id!==incomplete.id&&cityKey(c.city)===cityKey(incomplete.city)&&cityKey(c.company||'')===cityKey(incomplete.company||'')&&phoneKey(c.phone)===phoneKey(incomplete.phone)&&(c.name.trim()||c.address.trim()));
- if(candidates.length!==1)continue;
- const target=candidates[0];
+const phoneKey=(value:string)=>value.replace(/\D/g,'');
+const sameContactScope=(a:CityContact,b:CityContact)=>cityKey(a.city)===cityKey(b.city)&&cityKey(a.company||'')===cityKey(b.company||'');
+const sameOfficeFields=(a:{name:string,phone:string,address:string},b:{name:string,phone:string,address:string})=>cityKey(a.name)===cityKey(b.name)&&phoneKey(a.phone)===phoneKey(b.phone)&&cityKey(a.address)===cityKey(b.address);
+function mergeContactInto(data:Data,source:CityContact,target:CityContact){
  for(const leg of data.legs)for(const service of leg.services)for(const side of ['origin','destination'] as const){
- const office=side==='origin'?service.originContact:service.destinationContact;
- const legacy=side==='origin'&&!office&&cityKey(leg.from)===cityKey(incomplete.city)&&cityKey(service.company)===cityKey(incomplete.company||'')&&!service.departure.trim()&&phoneKey(service.phone)===phoneKey(incomplete.phone);
- const unlinked=office&&!office.id&&cityKey(side==='origin'?leg.from:leg.to)===cityKey(incomplete.city)&&cityKey(service.company)===cityKey(incomplete.company||'')&&!office.name.trim()&&!office.address.trim()&&phoneKey(office.phone)===phoneKey(incomplete.phone);
- if(office?.id!==incomplete.id&&!legacy&&!unlinked)continue;
- const snapshot={id:target.id,name:target.name,phone:target.phone,address:target.address};
- if(side==='origin'){service.originContact=snapshot;service.phone=target.phone;service.departure=target.name;}else service.destinationContact=snapshot;
+  const saved=side==='origin'?service.originContact:service.destinationContact;
+  const values=saved||(side==='origin'?{name:service.departure,phone:service.phone||service.whatsapp||'',address:''}:undefined);
+  const scoped=cityKey(side==='origin'?leg.from:leg.to)===cityKey(source.city)&&cityKey(service.company)===cityKey(source.company||'');
+  const unlinked=(!saved?.id||!data.cityContacts?.some(c=>c.id===saved.id))&&scoped&&values&&sameOfficeFields(values,source);
+  if(saved?.id!==source.id&&!unlinked)continue;
+  const snapshot={id:target.id,name:target.name,phone:target.phone,address:target.address};
+  if(side==='origin'){service.originContact=snapshot;service.phone=target.phone;service.departure=target.name;}else service.destinationContact=snapshot;
  }
- data.cityContacts=data.cityContacts?.filter(c=>c.id!==incomplete.id);
+ data.cityContacts=data.cityContacts?.filter(c=>c!==source);
+}
+export function consolidateIncompleteContacts(data:Data):Data{
+ // Collapse identical offices before deciding whether an incomplete record is ambiguous.
+ const unique:CityContact[]=[];
+ for(const contact of [...(data.cityContacts||[])]){
+  const target=unique.find(c=>sameContactScope(c,contact)&&sameOfficeFields(c,contact));
+  if(target)mergeContactInto(data,contact,target);else unique.push(contact);
+ }
+ for(const incomplete of [...(data.cityContacts||[])]){
+  if(incomplete.name.trim()||incomplete.address.trim()||!phoneKey(incomplete.phone))continue;
+  const candidates=(data.cityContacts||[]).filter(c=>c.id!==incomplete.id&&sameContactScope(c,incomplete)&&phoneKey(c.phone)===phoneKey(incomplete.phone)&&(c.name.trim()||c.address.trim()));
+  if(candidates.length===1)mergeContactInto(data,incomplete,candidates[0]);
  }
  return data;
 }
