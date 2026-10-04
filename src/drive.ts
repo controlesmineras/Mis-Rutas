@@ -1,6 +1,9 @@
 import{dataSchema,Data}from'./data';import{readNotebook,finishSync,mergeData}from'./storage';
 const scope='https://www.googleapis.com/auth/drive.appdata';const prefix='mis-rutas-snapshot-';let token='',expires=0,clientId='',running=false;let account='';
-export async function setupDrive(){const r=await fetch('./config.json');if(!r.ok)throw Error('No se pudo cargar la configuración.');const config=await r.json();clientId=config.googleClientId||'';return!!clientId;}
+const CLIENT_KEY='mis-rutas.google-client-id.v1';
+export function getDriveClientId(){return localStorage.getItem(CLIENT_KEY)||clientId;}
+export function configureDrive(value:string){const id=value.trim();if(id&&!/^[a-zA-Z0-9._-]+\.apps\.googleusercontent\.com$/.test(id))throw Error('Ingresa un ID de cliente válido de Google.');disconnectDrive();localStorage.setItem(CLIENT_KEY,id);clientId=id;}
+export async function setupDrive(){const r=await fetch('./config.json');if(!r.ok)throw Error('No se pudo cargar la configuración.');const config=await r.json();clientId=localStorage.getItem(CLIENT_KEY)||config.googleClientId||'';return!!clientId;}
 export function connected(){return!!token&&Date.now()<expires;}
 export function connectDrive():Promise<void>{return new Promise((resolve,reject)=>{
  if(!clientId){reject(Error('La conexión con Google Drive está pendiente de configuración. Tus datos siguen guardados en este dispositivo.'));return;}
