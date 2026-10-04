@@ -1,5 +1,6 @@
 import {useState,useEffect} from 'react';
 import HoursEditor from './HoursEditor';
+import CompanyContactEditor,{serviceOffice,emptyOffice} from './CompanyContactEditor';
 import CityContactFields,{contactForCity,emptyCityContact,saveCityContact,groupedCityContacts} from './cityContacts';
 import {fareHistory,latestFare,showFare,recordFare} from './fares';
 import {Route,Plus,Phone,MessageCircle,Clock,MapPin,Pencil,X,Bus,ChevronRight,Star} from 'lucide-react';
@@ -24,7 +25,7 @@ useEffect(()=>{const ctx=(document as any).modelContext;if(!ctx?.registerTool)re
 function addLeg(){if(!route)return;setError('');const last=data.legs.find(l=>l.id===route.legs.at(-1));setModal({kind:'leg',route:trip!.routes[0].id,trip:trip!.id,from:last?.to||'',to:'',option:'1',description:''});}
 function evaluateLeg(id:string){setError('');const l=data.legs.find(l=>l.id===id)!;setModal({kind:'evaluate',leg:id,description:l.description||'',travelTime:l.travelTime||'',roadRating:l.roadRating||0,ratings:Object.fromEntries(l.services.map(s=>[s.id,s.companyRating||0]))});}
 async function changeOption(id:string,option:'1'|'1'|'2'){if(busy)return;const next=structuredClone(data),t=next.trips.find(t=>t.id===trip!.id)!;t.options={...t.options,[id]:option};await save(next);}
-function editService(leg:string,s?:Service){setModal({kind:'service',leg,service:s?{...s,fare:latestFare(s)}:{...emptyService,id:uid()},hours:s&&serviceHours(s).length?serviceHours(s):['']});}
+function editService(leg:string,s?:Service){const current=data.legs.find(l=>l.id===leg)!;setModal({kind:'service',leg,service:s?{...s,fare:latestFare(s)}:{...emptyService,id:uid()},hours:s&&serviceHours(s).length?serviceHours(s):[''],originOffice:s?serviceOffice(data,s,current.from,'origin'):undefined,destinationOffice:s?serviceOffice(data,s,current.to,'destination'):undefined});}
 async function submit(e:React.FormEvent){
  e.preventDefault();if(!modal||busy)return;const next=structuredClone(data);
  if(modal.kind==='cityContact'){if(!modal.fields.company.trim()){setError('Escribe la empresa a la que pertenece el contacto.');return;}if(!modal.city.trim()){setError('Escribe la ciudad.');return;}if(!Object.values(modal.fields).some((v:any)=>typeof v==='string'&&v.trim())||!(modal.fields.name.trim()||modal.fields.phone.trim()||modal.fields.address.trim())){setError('Agrega el nombre, teléfono o ubicación del terminal o paradero.');return;}saveCityContact(next,modal.city,modal.fields);}
@@ -33,7 +34,9 @@ async function submit(e:React.FormEvent){
   const leg=next.legs.find(l=>l.id===modal.leg)!;const hours=normalizeHours(modal.hours);const service={...modal.service,company:modal.service.company.trim(),departures:hours,times:hours.join(', ')};
   if(!service.company){setError('Escribe el nombre de la empresa.');return;}
   const i=leg.services.findIndex(s=>s.id===service.id);const priced=recordFare(i<0?undefined:leg.services[i],service,new Date().toISOString(),uid());if(i<0)leg.services.push(priced);else leg.services[i]=priced;
-  const previousContact=contactForCity(next,leg.from,priced.company);saveCityContact(next,leg.from,{company:priced.company,name:priced.departure||previousContact?.name||'',phone:priced.phone||previousContact?.phone||'',address:previousContact?.address||''});
+  const originOffice=modal.originOffice||serviceOffice(data,service,leg.from,'origin'),destinationOffice=modal.destinationOffice||serviceOffice(data,service,leg.to,'destination');
+  const origin=saveCityContact(next,leg.from,{...originOffice,company:service.company}),destination=saveCityContact(next,leg.to,{...destinationOffice,company:service.company});
+  priced.originContact=origin?{id:origin.id,name:origin.name,phone:origin.phone,address:origin.address}:{...emptyOffice};priced.destinationContact=destination?{id:destination.id,name:destination.name,phone:destination.phone,address:destination.address}:{...emptyOffice};priced.phone=priced.originContact.phone;priced.departure=priced.originContact.name;
  }else if(modal.kind==='leg'){
   const from=modal.from.trim(),to=modal.to.trim();
   if(!from||!to){setError('Completa el origen y el destino del tramo.');return;}
@@ -45,8 +48,6 @@ async function submit(e:React.FormEvent){
   }
   if(!leg){leg={id:uid(),from,to,services:[],description:modal.description.trim()};next.legs.push(leg);}
   else if(modal.description.trim())leg.description=modal.description.trim();
-  for(const fields of [modal.fromContact,modal.toContact]){if(fields&&(fields.name.trim()||fields.phone.trim()||fields.address.trim())&&!fields.company.trim()){setError('Indica la empresa del contacto del terminal o paradero.');return;}}
-  saveCityContact(next,from,modal.fromContact||emptyCityContact);saveCityContact(next,to,modal.toContact||emptyCityContact);
   target.legs.push(leg.id);owner.options={...owner.options,[leg.id]:modal.option};
   if(await save(next))setExpandedLegs(ids=>[...ids,leg.id]);return;
  }else{
@@ -64,7 +65,7 @@ function serviceCard(s:Service,l:any){return <div className="service" key={s.id}
  <div className="service-top"><div><p className="card-label">EMPRESA</p><h3><button className="company-title" onClick={()=>{setError('');editService(l.id,s);}}>{s.company}</button></h3>{!!s.companyRating&&<p className="assessment"><Star size={14} fill="currentColor"/> Empresa: {s.companyRating}/5</p>}</div><button className="icon" aria-label={'Editar empresa y horarios de '+s.company} onClick={()=>{setError('');editService(l.id,s);}}><Pencil size={17}/></button></div>
  <p className="card-label">HORARIOS</p><div className="hours-list">{serviceHours(s).length?serviceHours(s).map(hour=><span className="hour-chip" key={hour}><Clock size={16}/>{hour}</span>):<span className="muted">Por confirmar</span>}</div>
  <button className="fare-summary" onClick={()=>{setError('');editService(l.id,s);}}><span><small>TARIFA · ÚLTIMO PRECIO</small><b>{latestFare(s)?showFare(latestFare(s)):'Sin tarifa registrada'}</b></span><span className="fare-history-link">Ver historial <ChevronRight size={16}/></span></button>
- <p className="card-label">CONTACTO</p><div className="contacts">{s.phone?<a href={'tel:'+s.phone.replace(/[^+\d]/g,'')}><Phone size={16}/>{s.phone}</a>:<span className="muted">Sin contacto registrado</span>}{s.whatsapp&&<a target="_blank" rel="noreferrer" href={'https://wa.me/'+contact(s)}><MessageCircle size={16}/>WhatsApp</a>}</div>
+ {(['origin','destination'] as const).map(side=>{const city=side==='origin'?l.from:l.to,office=serviceOffice(data,s,city,side);return <div key={side}><p className="card-label">CONTACTO {city.toLocaleUpperCase('es')}</p>{office.name&&<p>{office.name}</p>}{office.address&&<p><MapPin size={15}/> {office.address}</p>}<div className="contacts">{office.phone?<a href={'tel:'+office.phone.replace(/[^+\d]/g,'')}><Phone size={16}/>{office.phone}</a>:<span className="muted">Sin contacto registrado</span>}{side==='origin'&&s.whatsapp&&<a target="_blank" rel="noreferrer" href={'https://wa.me/'+contact(s)}><MessageCircle size={16}/>WhatsApp</a>}</div></div>;})}
  {s.days&&<p>{s.days}</p>}{s.departure&&<p><MapPin size={15}/> {s.departure}</p>}<div className="details">{s.duration&&<span>{s.duration}</span>}</div>{s.notes&&<p>{s.notes}</p>}{s.verified&&<small>Verificado: {s.verified}</small>}
  </div>;}
 const savedFareHistory=modal?.kind==='service'?fareHistory(data.legs.find(l=>l.id===modal.leg)?.services.find(s=>s.id===modal.service.id)||emptyService):[];
@@ -79,22 +80,17 @@ return <><header><div className="brand"><span><Route size={25}/></span><b>Mis ru
  <fieldset className="rating-field"><legend>Calificación de la vía</legend><Rating value={modal.roadRating} label="Calificación de la vía" onChange={v=>setModal({...modal,roadRating:v})}/></fieldset>
  </>:modal.kind==='service'?<>
  <p className="muted">{data.legs.find(l=>l.id===modal.leg)?.from} → {data.legs.find(l=>l.id===modal.leg)?.to}</p>
- <label>Empresa<input autoFocus required value={modal.service.company} placeholder="Nombre de la empresa" onChange={e=>setModal({...modal,service:{...modal.service,company:e.target.value}})}/></label>
+ <label>Empresa<input autoFocus required value={modal.service.company} placeholder="Nombre de la empresa" onChange={e=>setModal({...modal,originOffice:undefined,destinationOffice:undefined,service:{...modal.service,company:e.target.value,originContact:undefined,destinationContact:undefined,phone:'',departure:''}})}/></label>
  <fieldset className="rating-field"><legend>Calificación de la empresa</legend><Rating value={modal.service.companyRating||0} label="Calificación de la empresa" onChange={value=>setModal({...modal,service:{...modal.service,companyRating:value}})}/></fieldset>
  <HoursEditor hours={modal.hours} onChange={hours=>setModal((current:any)=>({...current,hours}))}/>
- <label>Contacto<input type="tel" value={modal.service.phone} placeholder="Teléfono de la empresa o del conductor" onChange={e=>setModal({...modal,service:{...modal.service,phone:e.target.value}})}/></label>
+ {(['origin','destination'] as const).map(side=>{const city=side==='origin'?data.legs.find(l=>l.id===modal.leg)!.from:data.legs.find(l=>l.id===modal.leg)!.to;const key=side==='origin'?'originOffice':'destinationOffice';return <CompanyContactEditor key={side} data={data} city={city} company={modal.service.company} value={modal[key]||serviceOffice(data,modal.service,city,side)} onChange={office=>setModal({...modal,[key]:office})}/>;})}
  <label>Tarifa (pesos)<div className="fare-input"><span aria-hidden="true">$</span><input inputMode="decimal" maxLength={100} value={modal.service.fare} placeholder="Ej. 45000" onChange={e=>setModal({...modal,service:{...modal.service,fare:e.target.value}})}/></div></label>
  <p className="muted fare-help">Al guardar un precio nuevo, se agrega al historial con la fecha de hoy.</p>
  <details className="fare-history"><summary>Historial de tarifas ({savedFareHistory.length})</summary>{savedFareHistory.length?<ol>{[...savedFareHistory].reverse().map((entry,index)=><li key={entry.id}><div><b>{showFare(entry.amount)}</b>{index===0&&<small>Último precio registrado</small>}</div><time>{entry.recordedAt?new Date(entry.recordedAt).toLocaleString('es-CO',{timeZone:'America/Bogota',dateStyle:'medium',timeStyle:'short'}):'Precio anterior · sin fecha registrada'}</time></li>)}</ol>:<p className="muted">Aún no hay precios registrados.</p>}</details>
- <details className="extra-fields"><summary>Más información (opcional)</summary><div className="form-grid">{[['days','Días de operación','text'],['departure','Lugar de salida','text'],['whatsapp','WhatsApp (con indicativo)','tel'],['duration','Duración aproximada','text'],['verified','Fecha de verificación','date']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={modal.service[key]} onChange={e=>setModal({...modal,service:{...modal.service,[key]:e.target.value}})}/></label>)}</div><label>Notas<textarea value={modal.service.notes} onChange={e=>setModal({...modal,service:{...modal.service,notes:e.target.value}})}/></label></details>
+ <details className="extra-fields"><summary>Más información (opcional)</summary><div className="form-grid">{[['days','Días de operación','text'],['whatsapp','WhatsApp (con indicativo)','tel'],['duration','Duración aproximada','text'],['verified','Fecha de verificación','date']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={modal.service[key]} onChange={e=>setModal({...modal,service:{...modal.service,[key]:e.target.value}})}/></label>)}</div><label>Notas<textarea value={modal.service.notes} onChange={e=>setModal({...modal,service:{...modal.service,notes:e.target.value}})}/></label></details>
  </>:modal.kind==='leg'?<>
  <label>Origen<input autoFocus required value={modal.from} placeholder="Pueblo o ciudad de origen" onChange={e=>setModal({...modal,from:e.target.value})}/></label>
  <label>Destino<input required value={modal.to} placeholder="Pueblo o ciudad de destino" onChange={e=>setModal({...modal,to:e.target.value})}/></label>
- <CityContactFields city={modal.from} value={modal.fromContact||emptyCityContact} onChange={fields=>setModal({...modal,fromContact:fields})}/>
- <CityContactFields city={modal.to} value={modal.toContact||emptyCityContact} onChange={fields=>setModal({...modal,toContact:fields})}/>
- <label>Ruta del tramo<select value={modal.option} onChange={e=>setModal({...modal,option:e.target.value})}><option value="1">RUTA PRINCIPAL</option><option value="2">RUTA ALTERNA</option></select></label>
- <label>Descripción (opcional)<textarea maxLength={1500} value={modal.description} placeholder="Vía destapada, recorrido más largo…" onChange={e=>setModal({...modal,description:e.target.value})}/></label>
- <p className="muted">Después podrás agregar horarios y evaluar el tiempo, la vía y la empresa.</p>
  </>:<>
  <label>{modal.kind==='trip'?'Nombre de la ruta':'Nombre de la ruta alterna'}<input autoFocus required value={modal.name} placeholder={modal.kind==='trip'?'Nombre de tu recorrido':'Nombre de la alternativa'} onChange={e=>setModal({...modal,name:e.target.value})}/></label>
  <p className="muted">Primero guarda el nombre. Luego agrega los tramos uno por uno.</p>
