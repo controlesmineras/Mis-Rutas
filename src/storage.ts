@@ -9,7 +9,9 @@ export async function finishSync(expected:number,data:Data,account:string,seen:s
 function fingerprint(value:unknown){let h=2166136261;for(const c of JSON.stringify(value)){h=Math.imul(h^c.charCodeAt(0),16777619);}return(h>>>0).toString(16);}
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export function mergeData(local:Data,remote:Data,base:Data):Data{
- const result=structuredClone(local);const legMap=new Map<string,string>();
+ const result=structuredClone(local);
+ for(const incoming of remote.cityContacts||[]){result.cityContacts??=[];const existing=result.cityContacts.find(c=>c.id===incoming.id),old=base.cityContacts?.find(c=>c.id===incoming.id);if(!existing){result.cityContacts.push(structuredClone(incoming));continue;}if(same(existing,incoming)||same(incoming,old))continue;if(same(existing,old)){Object.assign(existing,structuredClone(incoming));continue;}const clone={...incoming,id:incoming.id+'-copy-'+fingerprint(incoming)};if(!result.cityContacts.some(c=>c.id===clone.id))result.cityContacts.push(clone);}
+const legMap=new Map<string,string>();
  for(const incoming of remote.legs){const existing=result.legs.find(l=>l.id===incoming.id),old=base.legs.find(l=>l.id===incoming.id);
  if(!existing){result.legs.push(structuredClone(incoming));continue;}if(same(existing,incoming)||same(incoming,old))continue;
  if(same(existing,old)){Object.assign(existing,structuredClone(incoming));continue;}
