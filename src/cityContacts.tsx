@@ -28,7 +28,8 @@ export function consolidateIncompleteContacts(data:Data):Data{
  for(const leg of data.legs)for(const service of leg.services)for(const side of ['origin','destination'] as const){
  const office=side==='origin'?service.originContact:service.destinationContact;
  const legacy=side==='origin'&&!office&&cityKey(leg.from)===cityKey(incomplete.city)&&cityKey(service.company)===cityKey(incomplete.company||'')&&!service.departure.trim()&&phoneKey(service.phone)===phoneKey(incomplete.phone);
- if(office?.id!==incomplete.id&&!legacy)continue;
+ const unlinked=office&&!office.id&&cityKey(side==='origin'?leg.from:leg.to)===cityKey(incomplete.city)&&cityKey(service.company)===cityKey(incomplete.company||'')&&!office.name.trim()&&!office.address.trim()&&phoneKey(office.phone)===phoneKey(incomplete.phone);
+ if(office?.id!==incomplete.id&&!legacy&&!unlinked)continue;
  const snapshot={id:target.id,name:target.name,phone:target.phone,address:target.address};
  if(side==='origin'){service.originContact=snapshot;service.phone=target.phone;service.departure=target.name;}else service.destinationContact=snapshot;
  }
@@ -39,15 +40,20 @@ export function consolidateIncompleteContacts(data:Data):Data{
 export function repairContactDirectory(data:Data):Data{
  for(const leg of data.legs)for(const service of leg.services)for(const side of ['origin','destination'] as const){
   const city=side==='origin'?leg.from:leg.to,stored=side==='origin'?service.originContact:service.destinationContact;
-  const fields={name:stored?.name||(side==='origin'?service.departure:''),phone:stored?.phone||(side==='origin'?service.phone:''),address:stored?.address||''};
+  const fields={name:stored?.name||(side==='origin'?service.departure:''),phone:stored?.phone||(side==='origin'?(service.phone||service.whatsapp||''):''),address:stored?.address||''};
   if(!fields.name&&!fields.phone&&!fields.address)continue;
   if(stored?.id&&data.cityContacts?.some(c=>c.id===stored.id&&(cityKey(c.city)!==cityKey(city)||cityKey(c.company||'')!==cityKey(service.company))))continue;
   const matches=(c:CityContact)=>cityKey(c.city)===cityKey(city)&&cityKey(c.company||'')===cityKey(service.company);
   const existing=data.cityContacts?.find(c=>c.id===stored?.id&&matches(c))||data.cityContacts?.find(c=>matches(c)&&cityKey(c.name)===cityKey(fields.name)&&cityKey(c.address)===cityKey(fields.address)&&((!!fields.name||!!fields.address)||c.phone===fields.phone));
-  if(existing){existing.name||=fields.name;existing.phone||=fields.phone;existing.address||=fields.address;}
+  if(existing){existing.name||=fields.name;existing.phone||=fields.phone;existing.address||=fields.address;const snapshot={id:existing.id,name:existing.name,phone:existing.phone,address:existing.address};if(side==='origin'){service.originContact=snapshot;service.phone=existing.phone;service.departure=existing.name;}else service.destinationContact=snapshot;}
   else{data.cityContacts??=[];const preferred=stored?.id||'office-'+service.id+'-'+side;const id=data.cityContacts.some(c=>c.id===preferred)?'office-'+service.id+'-'+side:preferred;data.cityContacts.push({id,city:city.trim(),company:service.company.trim(),...fields});}
  }
  return consolidateIncompleteContacts(data);
 }
-export function groupedCityContacts(data:Data){const groups=new Map<string,{city:string,contacts:CityContact[]}>();const companyContacts=data.legs.flatMap(l=>l.services.flatMap(s=>{const origin=s.originContact||{name:s.departure,phone:s.phone||s.whatsapp,address:''};return [{...origin,id:origin.id||'service-origin-'+s.id,city:l.from,company:s.company},...(s.destinationContact?[{...s.destinationContact,id:s.destinationContact.id||'service-destination-'+s.id,city:l.to,company:s.company}]:[])].filter(c=>c.name||c.phone||c.address);}));for(const c of [...(data.cityContacts||[]),...companyContacts.filter(c=>!data.cityContacts?.some(x=>x.id===c.id)&&!data.cityContacts?.some(x=>cityKey(x.city)===cityKey(c.city)&&cityKey(x.company||'')===cityKey(c.company)&&((x.id===c.id)||(cityKey(x.name)===cityKey(c.name)&&cityKey(x.address)===cityKey(c.address)&&((!!c.name||!!c.address)||x.phone===c.phone)))))]){const key=cityKey(c.city),group=groups.get(key)||{city:c.city,contacts:[]};if(!group.contacts.some(x=>cityKey(x.company||'')===cityKey(c.company||'')&&x.name===c.name&&x.phone===c.phone&&x.address===c.address))group.contacts.push(c);groups.set(key,group);}return [...groups.values()].sort((a,b)=>a.city.localeCompare(b.city,'es'));}
+export function groupedCityContacts(data:Data){
+ const canonical=repairContactDirectory(structuredClone(data));
+ const groups=new Map<string,{city:string,contacts:CityContact[]}>();
+ for(const c of canonical.cityContacts||[]){const key=cityKey(c.city),group=groups.get(key)||{city:c.city,contacts:[]};if(!group.contacts.some(x=>cityKey(x.company||'')===cityKey(c.company||'')&&cityKey(x.name)===cityKey(c.name)&&x.phone===c.phone&&cityKey(x.address)===cityKey(c.address)))group.contacts.push(c);groups.set(key,group);}
+ return [...groups.values()].sort((a,b)=>a.city.localeCompare(b.city,'es'));
+}
 export default function CityContactFields({city,value,onChange}:{city:string,value:typeof emptyCityContact,onChange:(value:typeof emptyCityContact)=>void}){return <fieldset className="city-contact-fields"><legend>Lugar · {city.trim()||'Ciudad por indicar'}</legend><p className="muted">Opcional. Se guarda por empresa en esta ciudad.</p><label>Empresa<input maxLength={100} value={value.company} placeholder="Empresa a la que pertenece este contacto" onChange={e=>onChange({...value,company:e.target.value})}/></label><label>Lugar<input maxLength={200} value={value.name} placeholder="Ej. taquilla, terminal, paradero, local norte…" onChange={e=>onChange({...value,name:e.target.value})}/></label><label>Teléfono del lugar<input type="tel" maxLength={50} value={value.phone} placeholder="Número de contacto de la ciudad" onChange={e=>onChange({...value,phone:e.target.value})}/></label><label>Dirección o ubicación<input maxLength={300} value={value.address} placeholder="Dónde queda este lugar" onChange={e=>onChange({...value,address:e.target.value})}/></label></fieldset>;}
