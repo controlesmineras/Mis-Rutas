@@ -1,6 +1,6 @@
 import {useState,useEffect} from 'react';
 import {Route,Plus,Phone,MessageCircle,Clock,MapPin,Pencil,X,Bus,ChevronRight,Star} from 'lucide-react';
-import {Data,Service,initial,dataSchema,legOption,tripLegs,visibleLegs} from './data';
+import {Data,Service,initial,dataSchema,legOption,tripLegs,visibleLegs,serviceHours,normalizeHours} from './data';
 import {readNotebook,writeNotebook} from './storage';
 import {setupDrive,connectDrive,connected,synchronize,disconnectDrive} from './drive';
 const emptyService:Service={id:'',company:'',times:'',days:'',phone:'',whatsapp:'',departure:'',duration:'',fare:'',notes:'',verified:''};
@@ -21,12 +21,12 @@ useEffect(()=>{const ctx=(document as any).modelContext;if(!ctx?.registerTool)re
 function addLeg(){if(!route)return;setError('');const last=data.legs.find(l=>l.id===route.legs.at(-1));setModal({kind:'leg',route:trip!.routes[0].id,trip:trip!.id,from:last?.to||'',to:'',option:'1',description:''});}
 function evaluateLeg(id:string){setError('');const l=data.legs.find(l=>l.id===id)!;setModal({kind:'evaluate',leg:id,description:l.description||'',travelTime:l.travelTime||'',roadRating:l.roadRating||0,ratings:Object.fromEntries(l.services.map(s=>[s.id,s.companyRating||0]))});}
 async function changeOption(id:string,option:'1'|'1'|'2'){if(busy)return;const next=structuredClone(data),t=next.trips.find(t=>t.id===trip!.id)!;t.options={...t.options,[id]:option};await save(next);}
-function editService(leg:string,s?:Service){setModal({kind:'service',leg,service:s?{...s}:{...emptyService,id:uid()}});}
+function editService(leg:string,s?:Service){setModal({kind:'service',leg,service:s?{...s}:{...emptyService,id:uid()},hours:s&&serviceHours(s).length?serviceHours(s):['']});}
 async function submit(e:React.FormEvent){
  e.preventDefault();if(!modal||busy)return;const next=structuredClone(data);
  if(modal.kind==='evaluate'){const l=next.legs.find(l=>l.id===modal.leg)!;l.description=modal.description.trim();l.travelTime=modal.travelTime.trim();l.roadRating=modal.roadRating;l.services=l.services.map(s=>({...s,companyRating:modal.ratings[s.id]??s.companyRating??0}));}
  else if(modal.kind==='service'){
-  const leg=next.legs.find(l=>l.id===modal.leg)!;const service={...modal.service,company:modal.service.company.trim()};
+  const leg=next.legs.find(l=>l.id===modal.leg)!;const hours=normalizeHours(modal.hours);const service={...modal.service,company:modal.service.company.trim(),departures:hours,times:hours.join(', ')};
   if(!service.company){setError('Escribe el nombre de la empresa.');return;}
   const i=leg.services.findIndex(s=>s.id===service.id);if(i<0)leg.services.push(service);else leg.services[i]=service;
  }else if(modal.kind==='leg'){
@@ -53,7 +53,7 @@ async function submit(e:React.FormEvent){
 const services=data.legs.flatMap(l=>l.services.map(s=>({s,l})));
 function contact(s:Service){const digits=s.whatsapp.replace(/\D/g,'');return digits.length===10?'57'+digits:digits;}
 function serviceCard(s:Service,l:any){return <div className="service" key={s.id}>
- <div className="service-top"><div><p className="card-label">HORA</p><div className="times"><Clock size={18}/>{s.times||'Por confirmar'}</div></div><button className="icon" aria-label={'Editar horario de '+s.company} onClick={()=>{setError('');editService(l.id,s);}}><Pencil size={17}/></button></div>
+ <div className="service-top"><div><p className="card-label">HORARIOS</p><div className="hours-list">{serviceHours(s).length?serviceHours(s).map(hour=><span className="hour-chip" key={hour}><Clock size={16}/>{hour}</span>):<span className="muted">Por confirmar</span>}</div></div><button className="icon" aria-label={'Editar horario de '+s.company} onClick={()=>{setError('');editService(l.id,s);}}><Pencil size={17}/></button></div>
  <p className="card-label">EMPRESA</p><h3>{s.company}</h3>
  {!!s.companyRating&&<p className="assessment"><Star size={14} fill="currentColor"/> Empresa: {s.companyRating}/5</p>}<p className="card-label">CONTACTO</p><div className="contacts">{s.phone?<a href={'tel:'+s.phone.replace(/[^+\d]/g,'')}><Phone size={16}/>{s.phone}</a>:<span className="muted">Sin contacto registrado</span>}{s.whatsapp&&<a target="_blank" rel="noreferrer" href={'https://wa.me/'+contact(s)}><MessageCircle size={16}/>WhatsApp</a>}</div>
  {s.days&&<p>{s.days}</p>}{s.departure&&<p><MapPin size={15}/> {s.departure}</p>}<div className="details">{s.duration&&<span>{s.duration}</span>}{s.fare&&<span>{s.fare}</span>}</div>{s.notes&&<p>{s.notes}</p>}{s.verified&&<small>Verificado: {s.verified}</small>}
@@ -71,7 +71,7 @@ return <><header><div className="brand"><span><Route size={25}/></span><b>Mis ru
  {!data.legs.find(l=>l.id===modal.leg)!.services.length&&<p className="muted">Agrega un horario con su empresa para poder calificarla.</p>}
  </>:modal.kind==='service'?<>
  <p className="muted">{data.legs.find(l=>l.id===modal.leg)?.from} → {data.legs.find(l=>l.id===modal.leg)?.to}</p>
- <label>Hora<input autoFocus type="text" value={modal.service.times} placeholder="Ej. 6:30 a. m." onChange={e=>setModal({...modal,service:{...modal.service,times:e.target.value}})}/></label>
+ <div className="hours-editor">{modal.hours.map((hour:string,index:number)=><div className="hour-row" key={index}><label>{index===0?'Hora':'Hora '+(index+1)}<input autoFocus={index===0} type="text" maxLength={100} value={hour} placeholder="Ej. 6:30 a. m." onChange={e=>setModal({...modal,hours:modal.hours.map((value:string,i:number)=>i===index?e.target.value:value)})}/></label>{modal.hours.length>1&&<button type="button" className="icon remove-hour" aria-label={'Quitar horario '+(index+1)} onClick={()=>setModal({...modal,hours:modal.hours.filter((_:string,i:number)=>i!==index)})}><X size={18}/></button>}</div>)}<button type="button" className="secondary" disabled={modal.hours.length>=30} onClick={()=>setModal({...modal,hours:[...modal.hours,'']})}><Plus size={17}/>Agregar horario</button></div>
  <label>Empresa<input required value={modal.service.company} placeholder="Nombre de la empresa" onChange={e=>setModal({...modal,service:{...modal.service,company:e.target.value}})}/></label>
  <label>Contacto<input type="tel" value={modal.service.phone} placeholder="Teléfono de la empresa o del conductor" onChange={e=>setModal({...modal,service:{...modal.service,phone:e.target.value}})}/></label>
  <details className="extra-fields"><summary>Más información (opcional)</summary><div className="form-grid">{[['days','Días de operación','text'],['departure','Lugar de salida','text'],['whatsapp','WhatsApp (con indicativo)','tel'],['duration','Duración aproximada','text'],['fare','Tarifa','text'],['verified','Fecha de verificación','date']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={modal.service[key]} onChange={e=>setModal({...modal,service:{...modal.service,[key]:e.target.value}})}/></label>)}</div><label>Notas<textarea value={modal.service.notes} onChange={e=>setModal({...modal,service:{...modal.service,notes:e.target.value}})}/></label></details>
