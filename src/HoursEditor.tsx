@@ -18,7 +18,7 @@ export default function HoursEditor({hours,onChange}:{hours:string[],onChange:(h
  onPointerCancel={()=>{if(drag.current)onChange(drag.current.original);drag.current=null;setDragging(null);}}
  onLostPointerCapture={()=>{drag.current=null;setDragging(null);}}><Grip size={22}/></button>
  <div className="hour-arrows"><button type="button" className="icon" disabled={index===0} aria-label={'Subir horario '+(index+1)} onClick={()=>move(index,index-1)}><ChevronUp size={19}/></button><button type="button" className="icon" disabled={index===hours.length-1} aria-label={'Bajar horario '+(index+1)} onClick={()=>move(index,index+1)}><ChevronDown size={19}/></button></div>
- <button type="button" className="delete-hour" aria-label={'Eliminar horario '+(index+1)} onClick={()=>onChange(latest.current.filter((_,i)=>i!==index))}><Trash2 size={18}/><span>Eliminar</span></button>
+ <button type="button" className="delete-hour" aria-label={'Eliminar horario '+(index+1)} onClick={()=>onChange(latest.current.filter((_,i)=>i!==index))}><Trash2 size={18}/></button>
  </div></div>)}
  <button type="button" className="secondary" disabled={hours.length>=30} onClick={()=>onChange([...latest.current,''])}><Plus size={17}/>Agregar horario</button>
  </div>;
