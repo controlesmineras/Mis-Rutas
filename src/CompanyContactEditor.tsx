@@ -5,7 +5,7 @@ export const emptyOffice:Office={name:'',phone:'',address:''};
 export function companyOffices(data:Data,city:string,company:string){return groupedCityContacts(data).find(g=>cityKey(g.city)===cityKey(city))?.contacts.filter(c=>cityKey(c.company||'')===cityKey(company))||[];}
 export function serviceOffice(data:Data,service:Service,city:string,side:'origin'|'destination'):Office{
  const saved=side==='origin'?service.originContact:service.destinationContact;
- if(saved){const live=data.cityContacts?.find(c=>c.id===saved.id&&cityKey(c.city)===cityKey(city)&&cityKey(c.company||'')===cityKey(service.company));return live||saved;}
+ if(saved){const live=data.cityContacts?.find(c=>c.id===saved.id&&cityKey(c.city)===cityKey(city)&&cityKey(c.company||'')===cityKey(service.company));return live?{...saved,...live,name:live.name||saved.name,phone:live.phone||saved.phone,address:live.address||saved.address}:saved;}
  const offices=companyOffices(data,city,service.company);
  if(side==='origin'&&service.phone){return offices.find(c=>c.phone===service.phone)||{name:service.departure,phone:service.phone,address:''};}
  return offices.length===1?offices[0]:emptyOffice;
