@@ -1,4 +1,5 @@
 import {useState,useEffect} from 'react';
+import HoursEditor from './HoursEditor';
 import {Route,Plus,Phone,MessageCircle,Clock,MapPin,Pencil,X,Bus,ChevronRight,Star} from 'lucide-react';
 import {Data,Service,initial,dataSchema,legOption,tripLegs,visibleLegs,serviceHours,normalizeHours} from './data';
 import {readNotebook,writeNotebook} from './storage';
@@ -71,7 +72,7 @@ return <><header><div className="brand"><span><Route size={25}/></span><b>Mis ru
  {!data.legs.find(l=>l.id===modal.leg)!.services.length&&<p className="muted">Agrega un horario con su empresa para poder calificarla.</p>}
  </>:modal.kind==='service'?<>
  <p className="muted">{data.legs.find(l=>l.id===modal.leg)?.from} → {data.legs.find(l=>l.id===modal.leg)?.to}</p>
- <div className="hours-editor">{modal.hours.map((hour:string,index:number)=><div className="hour-row" key={index}><label>{index===0?'Hora':'Hora '+(index+1)}<input autoFocus={index===0} type="text" maxLength={100} value={hour} placeholder="Ej. 6:30 a. m." onChange={e=>setModal({...modal,hours:modal.hours.map((value:string,i:number)=>i===index?e.target.value:value)})}/></label>{modal.hours.length>1&&<button type="button" className="icon remove-hour" aria-label={'Quitar horario '+(index+1)} onClick={()=>setModal({...modal,hours:modal.hours.filter((_:string,i:number)=>i!==index)})}><X size={18}/></button>}</div>)}<button type="button" className="secondary" disabled={modal.hours.length>=30} onClick={()=>setModal({...modal,hours:[...modal.hours,'']})}><Plus size={17}/>Agregar horario</button></div>
+ <HoursEditor hours={modal.hours} onChange={hours=>setModal((current:any)=>({...current,hours}))}/>
  <label>Empresa<input required value={modal.service.company} placeholder="Nombre de la empresa" onChange={e=>setModal({...modal,service:{...modal.service,company:e.target.value}})}/></label>
  <label>Contacto<input type="tel" value={modal.service.phone} placeholder="Teléfono de la empresa o del conductor" onChange={e=>setModal({...modal,service:{...modal.service,phone:e.target.value}})}/></label>
  <details className="extra-fields"><summary>Más información (opcional)</summary><div className="form-grid">{[['days','Días de operación','text'],['departure','Lugar de salida','text'],['whatsapp','WhatsApp (con indicativo)','tel'],['duration','Duración aproximada','text'],['fare','Tarifa','text'],['verified','Fecha de verificación','date']].map(([key,label,type])=><label key={key}>{label}<input type={type} value={modal.service[key]} onChange={e=>setModal({...modal,service:{...modal.service,[key]:e.target.value}})}/></label>)}</div><label>Notas<textarea value={modal.service.notes} onChange={e=>setModal({...modal,service:{...modal.service,notes:e.target.value}})}/></label></details>
