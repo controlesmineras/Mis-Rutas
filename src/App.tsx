@@ -71,11 +71,10 @@ return <><header><div className="brand"><span><Route size={25}/></span><b>Mis ru
  <label>Descripción (opcional)<textarea value={modal.description} placeholder="Vía destapada, recorrido más largo…" maxLength={1500} onChange={e=>setModal({...modal,description:e.target.value})}/></label>
  <label>Tiempo de viaje<input value={modal.travelTime} maxLength={100} placeholder="Ej. 2 h 30 min" onChange={e=>setModal({...modal,travelTime:e.target.value})}/></label>
  <fieldset className="rating-field"><legend>Calificación de la vía</legend><Rating value={modal.roadRating} label="Calificación de la vía" onChange={v=>setModal({...modal,roadRating:v})}/></fieldset>
- {data.legs.find(l=>l.id===modal.leg)!.services.map(s=><fieldset className="rating-field" key={s.id}><legend>{s.company}{s.times?' · '+s.times:''}</legend><Rating value={modal.ratings[s.id]||0} label={'Calificación de '+s.company} onChange={v=>setModal({...modal,ratings:{...modal.ratings,[s.id]:v}})}/></fieldset>)}
- {!data.legs.find(l=>l.id===modal.leg)!.services.length&&<p className="muted">Agrega un horario con su empresa para poder calificarla.</p>}
  </>:modal.kind==='service'?<>
  <p className="muted">{data.legs.find(l=>l.id===modal.leg)?.from} → {data.legs.find(l=>l.id===modal.leg)?.to}</p>
  <label>Empresa<input autoFocus required value={modal.service.company} placeholder="Nombre de la empresa" onChange={e=>setModal({...modal,service:{...modal.service,company:e.target.value}})}/></label>
+ <fieldset className="rating-field"><legend>Calificación de la empresa</legend><Rating value={modal.service.companyRating||0} label="Calificación de la empresa" onChange={value=>setModal({...modal,service:{...modal.service,companyRating:value}})}/></fieldset>
  <HoursEditor hours={modal.hours} onChange={hours=>setModal((current:any)=>({...current,hours}))}/>
  <label>Contacto<input type="tel" value={modal.service.phone} placeholder="Teléfono de la empresa o del conductor" onChange={e=>setModal({...modal,service:{...modal.service,phone:e.target.value}})}/></label>
  <label>Tarifa (pesos)<div className="fare-input"><span aria-hidden="true">$</span><input inputMode="decimal" maxLength={100} value={modal.service.fare} placeholder="Ej. 45000" onChange={e=>setModal({...modal,service:{...modal.service,fare:e.target.value}})}/></div></label>
