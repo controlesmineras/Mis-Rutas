@@ -7,21 +7,23 @@
     "dev": "vite --host 0.0.0.0",
     "build": "node scripts/build.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "test:contacts": "node scripts/test-contacts.mjs"
+    "test:contacts": "node scripts/test-contacts.mjs",
+    "test:drive": "node scripts/test-drive.mjs"
   },
   "dependencies": {
+    "lucide-react": "^1.31.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "lucide-react": "^1.31.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "vite": "8.0.13",
-    "@vitejs/plugin-react": "6.0.2",
-    "tailwindcss": "4.2.1",
-    "typescript": "5.9.3",
+    "@tailwindcss/postcss": "4.2.1",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@tailwindcss/postcss": "4.2.1"
+    "@vitejs/plugin-react": "6.0.2",
+    "fake-indexeddb": "^6.2.7",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.13"
   }
 }
